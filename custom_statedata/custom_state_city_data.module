@@ -1,0 +1,71 @@
+function custom_state_city_data($domain, $data_for, $stat){
+	//Get data if state is selected 
+	if(isset($stat) && $stat){
+		switch ($data_for) {
+			case 'Participating Colleges':
+				$q = db_query("SELECT :state as state, count(loc.nid) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid where loc.state = :state and did.gid = :domain", array(":state" => $stat, ":domain" => $domain))->fetchAll();
+				break;
+			case 'Faculty Count':
+				 $q = db_query("SELECT :state as state, SUM(f.field_total_faculty_in_college_value) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_field_data_field_total_faculty_in_college as f on loc.nid = f.entity_id where loc.state = :state and did.gid = :domain", array(":state" => $stat, ":domain" => $domain))->fetchAll();
+				break;
+			case 'Course Count':
+				$q = db_query("SELECT :state as state, count(c.degree_name) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_college_courses_data_table as c on loc.nid = c.college_nid where loc.state = :state and did.gid = :domain", array(":state" => $stat, ":domain" => $domain))->fetchAll();
+				break;
+			case 'Exam Accepted':
+				 $q = db_query("SELECT :state as state, count(distinct e.exam_nid) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_college_exam as e on loc.nid = e.college_nid where loc.state = :state and did.gid = :domain", array(":state" => $stat, ":domain" => $domain))->fetchAll();
+
+				break;
+			case 'College Intake':
+				$q = db_query("SELECT :state as state, SUM(ci.approved_intake) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_college_courses_data_table as ci on loc.nid = ci.college_nid where loc.state = :state and did.gid = :domain group by state", array(":state" => $stat, ":domain" => $domain))->fetchAll();
+				break;
+		}
+	}
+	//Else get data for ALL States
+	else{	
+		switch ($data_for) {
+			case 'Participating Colleges':
+				$q = db_query("SELECT loc.state as state, count(loc.nid) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid where did.gid = :domain group by state", array(":domain" => $domain))->fetchAll();
+				break;
+			case 'Faculty Count':
+				$q = db_query("SELECT loc.state as state, SUM(f.field_total_faculty_in_college_value) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_field_data_field_total_faculty_in_college as f on loc.nid = f.entity_id where did.gid = :domain group by state", array(":domain" => $domain))->fetchAll();
+				break;
+			case 'Course Count':
+				$q = db_query("SELECT loc.state as state, count( c.degree_name) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_college_courses_data_table as c on loc.nid = c.college_nid where did.gid = :domain group by state", array(":domain" => $domain))->fetchAll();
+				break;
+			case 'Exam Accepted':
+				 $q = db_query("SELECT loc.state as state, count(distinct e.exam_nid) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_college_exam as e on loc.nid = e.college_nid where did.gid = :domain group by state", array(":domain" => $domain))->fetchAll();
+
+				break;
+			case 'College Intake':
+				$q = db_query("SELECT loc.state as state, SUM(ci.approved_intake) as calculate_val from careers_current_college_custom_loc as loc Inner join careers_domain_access as did on loc.nid = did.nid Inner JOin careers_college_courses_data_table as ci on loc.nid = ci.college_nid where did.gid = :domain group by state", array(":domain" => $domain))->fetchAll();
+				break;
+		}
+	}
+	
+	//Delete Previous data before insertion to avaoid redundancy(duplication of data)
+	if(isset($stat) && $stat){
+		$and = db_and()->condition('domain_id',$domain, '=')->condition('state_field_name',$data_for, '=')->condition('state',$stat, '=');
+	}
+	else{$and = db_and()->condition('domain_id',$domain, '=')->condition('state_field_name',$data_for, '=');}
+	db_delete('state_city_data')->condition($and)->execute(); 
+	
+	//Insert data in careers_state_city_data Table
+	$statee = '';
+	$calculate = '';
+	foreach ($q as $record => $value) {
+	    $statee = $value->state;
+	    $calculate = $value->calculate_val;
+	    $records_array = array(
+	    	'domain_id' => $domain,
+	    	'state_field_name' => $data_for,
+	    	'state' => $statee,
+	    	'calculate_val' => $calculate
+	    );   
+	    db_insert('state_city_data')->fields($records_array)->execute();
+	}
+
+	//Redirect to state page after insertion
+	// drupal_goto('/state', array('query' => array('op'=>$ops,'domain'=> $domain,'data_for'=> $data_for, 'stat' => $stat)));
+
+
+}

@@ -1,0 +1,4 @@
+name = Display Alumni Insight
+description = Module for display Alumni Insight
+core = 7.x
+package = Z Module

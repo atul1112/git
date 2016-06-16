@@ -1,0 +1,56 @@
+<?php
+
+function custom_form_menu() {
+  global $user;
+  
+    $items['forms'] = array(
+    'title' => 'Custom Form',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_form_data'),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function custom_form_data($form, &$form_state){
+  global $user;
+ 
+  $account = $user->uid;
+  $acc = user_load($account);
+  //print_r($acc); die();
+  $form = array();
+
+  $form['name'] = array(
+    '#title' => 'Name',
+    '#type' => 'textfield',
+    );
+  $form['phone'] = array(
+    '#title' => 'Phone No.',
+    '#type' => 'textfield',
+    '#default_value' => $acc->field_phone_number[und][0][value],
+    /*'#default_value' => variable_get('field_phone_number',''),*/
+    '#maxlength' => 10,
+    );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Submit',
+    );
+
+  return $form;
+}
+
+function custom_form_data_submit($form, &$form_state){
+  global $user;
+  $account = $user->uid;
+  $save = $form_state['values']['phone'];
+  //print_r($save); 
+$existing = user_load($account);
+unset($existing->pass);
+$edit = (array)$existing;
+  $edit['field_phone_number']['und'][0]['value'] = $save;
+  //print_r($edit['data']['field_phone_number']); die();
+
+  user_save($user, $edit);
+  drupal_set_message('phone number set');
+}

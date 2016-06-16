@@ -1,0 +1,201 @@
+<?php
+
+function custom_alumni_menu() {
+  $items = array(); 
+  $items['site-admin/alumni'] = array(
+    'title' => 'Alumni Info by State',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_alumni_data'),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+   $items['alumni-name/search_autocomplete'] = array(
+    'title' => 'Autocomplete for alumni Name',
+    'page callback' => '_alumni_name_search_autocomplete',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function custom_alumni_data($form, &$form_state){
+	$form = array();
+
+	$stat = isset($_GET['state']) ? check_plain($_GET['state']) : '';
+	$alumni = isset($_GET['a_name']) ? check_plain($_GET['a_name']) : '';
+
+  $query = careers_db_select('location_tids_mapping','st'); 
+	$query->fields('st', array('google_name'));
+	$query->distinct();
+	$query->condition('parent_tid','0','=');
+	$query->orderBy('google_name');
+	$states = $query->execute()->fetchAll();
+
+    $state = array('' => '-Select State-');
+    foreach($states as $key => $value){
+	    $state[$value->google_name] = $value->google_name;
+	  }
+    $form['states'] = array(
+		'#type' => 'select',
+		'#title' => 'Select State',
+		'#options' => $state,
+		'#default_value' => $stat,
+	);
+
+	 /*$form['filter_alumni_name'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Name of Alumni'),
+      '#attributes' => array('placeholder' => 'Type Alumni name to search'),
+      '#autocomplete_path' => 'alumni-name/search_autocomplete',
+	);*/
+
+    $form['calculate'] = array(
+	    '#type' => 'submit',
+	    '#value' => t('Notable AlumnI'),	   
+  	);
+  	$form['space'] = array(
+		'#type' => 'markup',
+		'#markup' => '<div></br></br></div>',
+		);
+
+  $query = careers_db_select('college_notable_alumni','a');
+	$query->innerJoin('college_notable_alumni_data', 'ad', 'a.id = ad.alumni_id');
+	$query->innerJoin('current_college_custom_loc', 'loc', 'loc.nid = ad.college_nid');
+  $query->leftJoin('file_managed','f','f.fid = a.pic_fid');
+	$query->fields('a',array('id','alumni_name','company_name','designation','alumni_link','pic_fid','url_path'));
+	$query->fields('loc', array('state'));
+  $query->fields('f',array('uri'));
+  $query->condition('loc.state',$stat,'=');
+	$q = $query->execute()->fetchAll();
+
+
+
+
+  	$header = array();
+    $header[] = array("data" => "S.No.");
+    $header[] = array("data" => "Image");
+    $header[] = array("data" => "State");
+    $header[] = array("data" => "Photo");
+    $header[] = array("data" => "Alumni Name");
+    $header[] = array("data" => "Company Name");
+    $header[] = array("data" => "Designation");
+    $header[] = array("data" => "Alumni Social Link");
+   // $header[] = array("data" => "Update");
+
+    $row = array();
+
+  	$count ='';
+
+    foreach($q as $key => $item){
+    	$opt['state']= $item->state;
+    	$opt['pic']= $item->pic_fid;
+    	$opt['Alumni_name']= $item->alumni_name;
+    	$opt['Designation']= $item->designation;
+    	$opt['Company']= $item->company_name;
+    	$opt['Social']= $item->alumni_link;
+    	$opt['Social_url']= $item->url_path;
+      $opt['uri']= $item->uri;
+
+      $count++;
+    	$social = l(t($opt['Social']), $opt['Social_url']);
+      $image = show_default_image('taxonomy.jpg', $opt['uri'], $width = 220, $height = 220, NULL, 'Alumni', 'thumbnail');
+
+    $rows[] = array(
+        'data' => array(
+          '<div class="" title="">' .  $count .
+          '<span class=""></span></div>',
+          '<div class="" title="">' .  $image.
+          '<span class=""></span></div>',
+          '<div class="" title="">' .  $opt['state'].
+          '<span class=""></span></div>',
+          '<div class="" title="">' .  $pics.
+          '<span class=""></span></div>',
+          '<div class="m-college" title="">' . $opt['Alumni_name'].  
+          '<span class=""></span></div>',
+          '<div class="m-course" title="">' .  $opt['Company'] .  
+          '<span class=""></span></div>',
+          '<div class="m-course" title="">' . $opt['Designation'] .  
+          '<span class=""></span></div>',
+          '<div class="m-course" title="">' . $social .  
+          '<span class=""></span></div>',
+        )
+      );
+	}
+    // Table creation.
+  $form['table']['table'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $rows,
+    '#empty' => t('Table has no row!')
+  );
+  $form['table']['pager'] = array('#markup' => theme('pager'));
+ 
+ return $form;
+}
+
+function custom_alumni_data_submit($form, &$form_state){
+	$state = $form_state['values']['states'];
+	$a_name = $form_state['values']['filter_alumni_name'];
+	drupal_goto('site-admin/alumni', array('query' => array('a_name'=> $a_name,'state' => $state)));
+}
+
+function _alumni_name_search_autocomplete($string) {
+  $matches = array();
+  $result = careers_db_select('college_notable_alumni', 'n');
+  $result->fields('n', array('id', 'alumni_name'));
+  $result->condition('n.alumni_name', '%' . db_like($string) . '%', 'LIKE');
+  $result->range(0, 15);
+  $res = $result->execute();
+  foreach ($res as $row) {
+    $matches[check_plain($row->alumni_name)] = check_plain($row->alumni_name);
+  }
+  drupal_json_output($matches);
+}
+
+function custom_alumni_block_info() {
+  $blocks = array();
+  $blocks['notable_alumni'] = array(
+    'info' => t('Notable Alumni Block'),
+  );
+  return $blocks;
+}
+
+function custom_alumni_block_view($delta = '') {
+  $block = array();
+  switch ($delta) {
+    case 'notable_alumni':
+      $block['subject'] = 'Notable Alumni';
+      $block['content'] = custom_alumni_block_content();
+      break;
+  }
+  return $block;
+}
+
+function custom_alumni_theme() {
+  return array(
+    'notable_alumni_output' => array(
+      'template' => 'block--custom_alumni',
+      'path' => drupal_get_path('module', 'custom_alumni') . '/templates',
+    ),
+  );
+}
+
+/*function custom_alumni_block_content() {
+  $ste = arg(2);
+  $domain_ids = $GLOBALS['_domain']['domain_id'];
+
+ $query = careers_db_select('college_notable_alumni','a');
+  $query->innerJoin('college_notable_alumni_data', 'ad', 'a.id = ad.alumni_id');
+  $query->innerJoin('current_college_custom_loc', 'loc', 'loc.nid = ad.college_nid');
+  $query->innerJoin('file_managed','f','f.fid = a.pic_fid');
+  $query->fields('a',array('id','alumni_name','company_name','designation','alumni_link','pic_fid','url_path'));
+  $query->fields('loc', array('state'));
+  $query->fields('f',array('uri'));
+  $q = $query->execute()->fetchAll();
+
+  foreach ($q as $key => $value) {
+   
+  }
+ 
+  return theme('notable_alumni_output', array('output' => $output, 'zone'=> $zone));
+}*/

@@ -1,0 +1,5 @@
+name = State Header Data
+description = Module for display state header data
+core = 7.x
+package = Z Module
+dependencies[]=ctools

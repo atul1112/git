@@ -1,0 +1,4 @@
+name = Node Follow Count
+description = Custom Node follow counter
+core = 7.x
+package = Z Module

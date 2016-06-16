@@ -1,0 +1,26 @@
+<?php
+
+function custom_data_menu() {
+  
+    $items['userdata/%/info'] = array(
+    'title' => 'User Info',
+    'page callback' => 'custom_data_user',
+    'page arguments' => array(1),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function custom_data_user($arg){
+  $acc = user_load($arg);
+
+  $output = t('Name : ') . $acc->name;
+  $output .= t('</br>');
+   $output .= t('Email : ') . $acc->mail;
+  $output .= t('</br>');
+   $output .= t('Phone No. : ') . $acc->field_phone_number[und][0][value];
+  $output .= t('</br>');
+
+  return $output;
+}

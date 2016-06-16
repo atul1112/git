@@ -1,0 +1,301 @@
+<?php
+
+function custom_ajax_menu() {
+  $domain_id = $GLOBALS['_domain']['domain_id'];
+  $items = array();
+  
+    $items['site-admin/node-follow-count'] = array(
+    'title' => 'Searching for:  ',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_ajax_data'),
+    'access callback' => 'check_role_custom',
+    'type' => MENU_CALLBACK,
+  );
+    $items['custom_ajax_data_callback/%'] = array(
+    'page callback' => 'custom_ajax_data_callback',
+    'page arguments' => array(1),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+  $items['site-admin/node-follow-count/download'] = array(
+    'title' => 'Download Counts',
+    'page callback' => 'custom_ajax_data_download',
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+   $items['node-count-download-data-link'] = array(
+    'title' => '',
+    'page callback' => 'node_count_download_data_link',
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function check_role_custom(){
+    global $user;
+    $domain_id = $GLOBALS['_domain']['domain_id'];
+    if(in_array('administrator', $user->roles) && $domain_id == 1){
+        return TRUE;
+    }
+    return FALSE;
+}
+
+
+function custom_ajax_data($form, &$form_state){
+ 
+$options = db_query("Select nn.name, nn.type from {node_type} as nn Where nn.type IN (SELECT distinct n.type FROM {flagging} as f Inner Join {node} as n on n.nid = f.entity_id where f.entity_type =  'node' group by n.nid)")->fetchAll(); 
+
+  foreach($options as $key => $item){
+    $ops[$item->type] = $item->name;
+  }
+ 
+  $type = isset($form_state['values']['search_content']) ? $form_state['values']['search_content'] : $_GET['types'];
+  $start = isset($_GET['start']) ? check_plain($_GET['start']) : '';
+  $end = isset($_GET['end']) ? check_plain($_GET['end']) : '';
+  $node = isset($_GET['node']) ? check_plain($_GET['node']) : '';
+  $follow = isset($_GET['follow']) ? check_plain($_GET['follow']) : '';
+  $types = isset($_GET['types']) ? check_plain($_GET['types']) : '';
+ 
+  $form['search_content'] = array(
+        '#type' => 'select',
+        '#title' => '',
+        '#title_display' => 'invisible',
+        '#options' => $ops,
+        '#default_value' => $types,
+        '#required' => True,
+        '#ajax' => array(
+          'callback' => 'select_callback',
+          'wrapper' => 'select-auto',
+          ),
+    );
+
+  $form['date'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Select Date'),
+  );
+
+  if($start && $end){
+      $sdate = gmdate('Y-m-d',$start);
+      $edate = gmdate('Y-m-d',$end);
+  }
+  elseif($start){
+    $sdate = gmdate('Y-m-d',$start);
+  }
+  elseif($end){
+    $edate = gmdate('Y-m-d',$end);
+  }
+  else{
+      $sdate = $edate = '';
+  }
+  $form['date']['start_date'] = array(
+    '#prefix'=>t('Start Date'),
+    '#date_format' => 'Y-m-d',
+    '#date_year_range' => '0:-50',
+    '#default_value' => $sdate,
+    '#type' => 'date_popup',
+    
+    '#datepicker_options' => array('maxDate' => 0),
+  );
+  $form['date']['end_date'] = array(
+    '#prefix'=>t('End Date'),
+    '#date_format' => 'Y-m-d',
+    '#date_year_range' => '0:-50',
+    '#type' => 'date_popup',
+    '#default_value' => $edate,
+    '#datepicker_options' => array('maxDate' => 0),
+  );
+   
+   
+  $form['nodes'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Choose a content by title'),
+    '#default_value' => $node,
+    '#autocomplete_path' => 'custom_ajax_data_callback/' . $type,
+    '#prefix' => '<div id="select-auto">',
+    '#suffix' => '</div>',
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Filter'),
+  );
+  $get_url = $_GET;
+  unset($get_url['q']);
+  if($_GET['types']){
+  $form['download'] = array(
+      '#markup' => l(t('Download ALL '.$types), 'site-admin/node-follow-count/download', array('query' => $get_url, 'attributes' => array('class' => array('btn form-submit'), 'target' => '_blank'))),
+      '#prefix' => '',
+      '#suffix' => '</div>',
+    );
+}
+  if($node){
+  $form['result'] =array(
+    '#type' => 'markup',
+    '#markup' => '</br></br><h4>Name: '.$node .'</h2></br><h4>Start Date: '. $sdate.'</h2></br><h4>End Date: '.$edate .'</h2></br><h4>Count: '.$follow .'</h2>',
+    );
+}
+
+  return $form;
+}
+
+function select_callback(&$form, &$form_state){
+  return $form['nodes'];
+}
+
+function custom_ajax_data_callback($type, $string = "") {
+   $matches = array();
+
+  if ($string) {
+
+    $result = db_select('node', 'n')
+      ->fields('n', array('nid', 'title'))
+      ->condition('n.type', $type, '=')
+      ->condition('n.title', db_like($string) . '%', 'LIKE')
+      ->range(0, 20)
+      ->execute()->fetchAll();
+    foreach ($result as $node) {
+      $matches[$node->title] = check_plain($node->title). " (nid=$node->nid)";;
+    }
+  }
+
+  drupal_json_output($matches);
+}
+
+function custom_ajax_data_submit($form, &$form_state) {
+  $types = $form_state['input']['search_content'];
+  $start = strtotime($form_state['values']['start_date']);
+  $end = strtotime($form_state['values']['end_date']);
+  $node = $form_state['values']['nodes'];
+
+  $nid = db_query("SELECT n.nid FROM {node} n WHERE n.title = :title", array(":title"=> $node))->fetchField();
+  
+  if($start && $end){
+    $follow = db_query("SELECT count(entity_id)  FROM {flagging} WHERE `entity_type` LIKE 'node' AND `entity_id` = :nid and timestamp between :start and :end ", array(":nid"=> $nid, ":start"=> $start, "end"=> $end))->fetchField();}
+  else{
+    $follow = db_query("SELECT count(entity_id)  FROM {flagging} WHERE `entity_type` LIKE 'node' AND `entity_id` = :nid", array(":nid"=> $nid))->fetchField();
+  }
+  
+  drupal_goto('site-admin/node-follow-count', array('query' => array('types'=> $types,'follow'=> $follow,'node'=> $node, 'start' => $start, 'end' => $end,)));
+}
+
+
+function custom_ajax_data_download(){
+  set_time_limit(300000000);
+  global $base_path;
+  $extratime = 86399;
+  date_default_timezone_set('Asia/Kolkata');
+  
+  $start = isset($_GET['start']) ? check_plain($_GET['start']) : '';
+  $end = isset($_GET['end']) ? check_plain($_GET['end']) : '';
+  $node = isset($_GET['node']) ? check_plain($_GET['node']) : '';
+  $types = isset($_GET['types']) ? check_plain($_GET['types']) : '';
+  $follow = isset($_GET['follow']) ? check_plain($_GET['follow']) : '';
+  
+  $nid = db_query("SELECT n.nid FROM {node} n WHERE n.title = :title", array(":title"=> $node))->fetchField();
+ 
+  if ($_SESSION['download_node_count_data_xls_file'] && isset($_SESSION['download_node_count_data_xls_file'])) {
+    unlink($_SESSION['download_node_count_data_xls_file']);
+    unset($_SESSION['download_node_count_data_xls_file']);
+  }
+  
+  $destination = $_SERVER['HTTP_REFERER'];
+   $field_labels = array(
+    'Node ID',
+    'Title',
+    'Type',
+    'Status',
+    'Count',
+  );
+   
+   $filename = "download_node_count_data_from_" .gmdate('Y-m-d',$start). "_to_".gmdate('Y-m-d',$end) . ".csv";
+   $_SESSION['download_node_count_data_xls_file'] = "sites/default/files/" . $filename;
+   $fp = fopen("sites/default/files/" . $filename, 'w');
+  fputcsv($fp, $field_labels, ",");
+  fclose($fp);
+ 
+  if($start && $end){
+      $nodecounts = db_query("SELECT n.nid, n.title, n.type, n.status, count(f.entity_id)as counts FROM {flagging} as f Inner Join {node} as n on n.nid = f.entity_id where n.type = :types and timestamp between :start and :end group by n.nid order by counts DESC", array(":types"=> $types, ":start"=> $start, ":end"=> $end))->fetchAll();
+    }
+    elseif($start){
+        $nodecounts = db_query("SELECT n.nid, n.title, n.type, n.status, count(f.entity_id)as counts FROM {flagging} as f Inner Join {node} as n on n.nid = f.entity_id where n.type = :types and timestamp > :start group by n.nid order by counts DESC", array(":types"=> $types, ":start"=> $start))->fetchAll();
+    }
+    elseif($end){
+        $nodecounts = db_query("SELECT n.nid, n.title, n.type, n.status, count(f.entity_id)as counts FROM {flagging} as f Inner Join {node} as n on n.nid = f.entity_id where n.type = :types and timestamp < :end group by n.nid order by counts DESC", array(":types"=> $types, ":end"=> $end))->fetchAll();
+    }
+  else{
+    $nodecounts = db_query("SELECT n.nid, n.title, n.type, n.status, count(f.entity_id) as counts FROM {flagging} as f Inner Join {node} as n on n.nid = f.entity_id where n.type = :types group by n.nid order by counts DESC", array(":types"=> $types))->fetchAll();
+  }
+  
+  foreach(array_chunk($nodecounts,200) as $counts){
+      $operations[] = array('_write_node_count_data_on_xls_and_download', array($counts, $filename));
+  }
+  
+   $batch = array(
+    'operations' => $operations,
+    'finished' => 'batch_node_count_download_finished',
+    'title' => t('Node Count Data Download'),
+    'init_message' => t('Node Count Data Download is starting.'),
+    'progress_message' => t('Processed @current out of @total.'),
+    'error_message' => t('Node Count Download Batch has encountered an error.'),
+  );
+
+
+  batch_set($batch);
+  batch_process('node-count-download-data-link');
+  fclose($fp);
+  
+}
+
+function node_count_download_data_link() {
+  $download_links = $_SESSION['download_node_count_data_xls_file'];
+
+  $output ='<div class="back-button"><a href="/site-admin/node-follow-count"> Back </a></div>
+<div class="data-download">
+<h5>Download Node Count Data</h5>
+<a class="data" href="'. url($download_links).'">Click Here</a>
+</div>';
+  return $output;
+}
+
+function batch_node_count_download_finished($success, $results, $operations) {
+  if ($success) {
+    // Here we do something meaningful with the results.
+    $message = 'Total ' . (count($results) - 1) . ' Records write on xls.';
+    $message .= theme('item_list', $results);  // D6 syntax
+    drupal_set_message($message);
+  } else {
+    // An error occurred.
+    // $operations contains the operations that remained unprocessed.
+    $error_operation = reset($operations);
+    $message = t('An error occurred while processing %error_operation with arguments: @arguments', array('%error_operation' => $error_operation[0], '@arguments' => print_r($error_operation[1], TRUE)));
+    drupal_set_message($message, 'error');
+  }
+}
+
+function _write_node_count_data_on_xls_and_download($counts_data, $filename, &$context) {
+  set_time_limit(300000000000);
+  $context['finished'] = 0;
+  $context['sandbox']['max'] = count($counts_data);
+  $context['sandbox']['progress'] = 0;
+  $fp = fopen("sites/default/files/" . $filename, 'a');
+  $context['sandbox']['from_limit']=0;
+  $coll_array = array();
+  foreach ($counts_data as $data) {
+     
+    $coll_array['nid'] = $data->nid;
+    $coll_array['title'] = $data->title;
+    $coll_array['type'] = $data->type;
+    $coll_array['status'] = $data->status;
+    $coll_array['counts'] = $data->counts;
+    
+    fputcsv($fp, $coll_array, ",");
+    $context['results'][] = check_plain($data->title);
+    $context['sandbox']['progress'] ++;
+    $context['sandbox']['from_limit'] ++;
+    $context['message'] = t('Now Writing %name ON XLS', array('%name' => $data->title));
+  }
+  if ($context['sandbox']['progress'] == $context['sandbox']['max']) {
+    $context['finished'] = 1;
+  }
+}

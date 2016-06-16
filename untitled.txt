@@ -1,0 +1,20 @@
+includes/college_exam_alumni_backend.inc ->college_notable_alumni_backend_add_edit_form
+
+_alumni_name_autocomplete -> college.module
+
+function _alumni_name_autocomplete($string) {
+  $matches = array();
+  $result = careers_db_select('college_notable_alumni', 'n');
+  $result->fields('n', array('id', 'alumni_name'));
+  $result->condition('n.alumni_name', '%' . db_like($string) . '%', 'LIKE');
+  $result->range(0, 15);
+  $res = $result->execute();
+  foreach ($res as $row) {
+    $matches[check_plain($row->alumni_name) . '(' . $row->id . ')'] = check_plain($row->alumni_name);
+  }
+  drupal_json_output($matches);
+}
+
+
+includes/college_exam_alumni_backend.inc-> _college_notable_alumni_data_delete
+

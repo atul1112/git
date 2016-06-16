@@ -1,0 +1,456 @@
+<?php
+
+function custom_statedata_menu(){
+	$items = array();
+  
+    $items['site-owner/state'] = array(
+    'title' => 'State Wise Data',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('custom_statedata_data'),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+    
+    $items['site-owner/state/%ctools_js/update/%/%/%/%'] = array(
+    'title' => 'State Wise Data',
+    'page callback' => 'custom_statedata_data_update',
+    'page arguments' => array(2,4,5,6,7),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+    $items['site-owner/state/delete'] = array(
+    'title' => 'State Wise Data',
+    'page callback' => 'custom_statedata_data_delete',
+    'page arguments' => array(3,4,5,6),
+    'access callback' => True,
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function custom_statedata_block_info() {
+  $blocks = array();
+  $blocks['state_top_menu'] = array(
+    'info' => t('State Page Top Menu'),
+  );
+  return $blocks;
+}
+
+function custom_statedata_block_view($delta = '') {
+  $block = array();
+  switch ($delta) {
+    case 'state_top_menu':
+      $block['subject'] = '';
+      $block['content'] = custom_statedata_block_content();
+      break;
+  }
+  return $block;
+}
+
+function custom_statedata_theme() {
+  return array(
+    'statecity_block_output' => array(
+      'variables' => array('content' => NULL),
+      'template' => 'block--custom_statedata',
+      'path' => drupal_get_path('module', 'custom_statedata') . '/templates',
+  	),
+  );
+}
+
+function custom_statedata_block_content() {
+	$ste = arg(2);
+	$domain_ids = $GLOBALS['_domain']['domain_id'];
+
+	$query = careers_db_select('state_city_data','d');
+	$query->fields('d', array('domain_id', 'state_field_name','state','calculate_val'));
+	$query->condition('state',$ste, '=');
+	$query->condition('domain_id',$domain_ids, '=');
+	$res = $query->execute()->fetchAll();
+	
+	
+	//query for zone
+	$q =  careers_db_select('location_tids_mapping','z');
+	$q->fields('z',array('zone'));
+	$q->condition('google_name', $ste, '=');
+	$zone = $q->execute()->fetchField();
+	
+	foreach ($res as $key => $value) {
+		$output['data_for'][$value->state_field_name] = $value->state_field_name;
+		$output['count'][$value->state_field_name] = $value->calculate_val;	
+	}
+	//p($output);
+	return theme('statecity_block_output', array('output' => $output, 'zone'=> $zone));
+}
+
+function custom_statedata_data_update($ajax){
+	$arg3 = arg(3);
+	$arg4 = arg(4);
+	$arg5 = arg(5);
+	$arg6 = arg(6);
+	$arg7 = arg(7);
+	$arg8 = arg(8);
+
+	if ($ajax) {	
+    ctools_include('ajax');
+    ctools_include('modal');
+
+    $form_state = array(
+      'ajax' => TRUE,
+      'title' => t('Update Data'),
+      'id' => $arg8,
+      'domain' => $arg4,
+      'data_for' => $arg5,
+      'sta' => $arg6,
+      'count' => $arg7,
+    );
+    $output = ctools_modal_form_wrapper('custom_statedata_update_form', $form_state);
+
+    if (!empty($form_state['ajax_commands'])) {
+      $output = $form_state['ajax_commands'];
+    }
+
+    print ajax_render($output);
+    drupal_exit();
+  }
+  else {
+    return drupal_get_form('custom_statedata_update_form');
+  }
+}
+
+function custom_statedata_update_form($form, $form_state) {
+    $form = array();
+	$id = $form_state['id'];
+	$domain = $form_state['domain'];
+	$data_for = $form_state['data_for'];
+	$sta = $form_state['sta'];
+	$count = $form_state['count'];
+
+  $form['id'] = array(
+    '#type' => 'hidden',
+    '#title' => t('ID: '),
+    '#default_value' => $id,
+  );
+  $form['Domain_id'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Domain ID: '),
+    '#default_value' => $domain,
+    '#disabled' => True,
+  );
+  $form['Data_For'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Data For:'),
+    '#default_value' =>$data_for,
+    '#disabled' => True,
+  );
+  $form['State'] = array(
+    '#type' => 'textfield',
+    '#title' => t('State: '),
+    '#default_value' => $sta,
+    '#disabled' => True,
+  );
+  $form['Counts'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Counts: '),
+    '#default_value' => $count,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Update'),
+  );
+
+  if ( $form_state['submitted']){
+        $commands[] = ctools_modal_command_dismiss();
+         $commands[] = ctools_ajax_command_redirect('site-owner/state');
+    print ajax_render($commands);
+    exit;
+  }
+
+  return $form;
+}
+
+function custom_statedata_update_form_submit(&$form, &$form_state){
+	$c = $form_state['values']['Counts'];
+	$id = $form_state['values']['id'];
+	
+	$update = db_update('state_city_data')
+	  ->fields(array('calculate_val' => $c,))
+	  ->condition('id', $id, '=')
+	  ->execute();
+
+	  ctools_modal_command_dismiss();
+	  $form_state['rebuild'] = TRUE;
+}
+
+function custom_statedata_data_delete(){
+	$arg3 = arg(3);
+	$arg4 = arg(4);
+	$arg5 = arg(5);
+	$arg6 = arg(6);
+
+	$and = db_and()->condition('domain_id',$arg3, '=')->condition('state_field_name',$arg4, '=')->condition('state',$arg5, '=')->condition('calculate_val',$arg6, '=');
+	db_delete('state_city_data')->condition($and)->execute();
+
+	drupal_goto('site-owner/state');
+	drupal_set_message("Data Deleted");
+}
+
+function custom_statedata_data($form, &$form_state){
+	$form = array();
+	$rows = $header = array();
+	
+	$d_id = careers_db_select('domain','d');
+	$d_id->fields('d', array('domain_id','sitename'));
+	$d_id->range(0, 25);
+	$options = $d_id->execute()->fetchAll();
+
+	foreach($options as $key => $item){
+	    $ops[$item->domain_id] = $item->sitename ;
+	  }
+	$form['domain_ids'] = array(
+        '#type' => 'select',
+        '#title' => 'Select Domain',
+        '#options' => $ops,
+        '#required' => True,
+        '#default_value' => $_GET['domain'],
+    );
+    
+    $for = array('Participating Colleges' => 'Participating Colleges', 'Faculty Count' => 'Faculty Count', 'Course Count' => 'Course Count', 'Exam Accepted' => 'Exam Accepted', 'College Intake' => 'College Intake');
+    $form['for'] = array(
+		'#type' => 'select',
+		'#title' => 'Data For',
+		'#options' => $for,
+		'#required' => True,
+		'#default_value' => $_GET['data_for'],
+		);
+
+    $states = db_query("SELECT distinct google_name FROM careers_location_tids_mapping where parent_tid = '0' order by google_name limit 0,18976543424354")->fetchAll();
+    $state = array('' => '-Select State-');
+    foreach($states as $key => $value){
+	    $state[$value->google_name] = $value->google_name;
+	  }
+    $form['states'] = array(
+		'#type' => 'select',
+		'#title' => 'Select State',
+		'#options' => $state,
+		'#default_value' => $_GET['stat'],
+		);
+
+    $form['calculate'] = array(
+	    '#type' => 'submit',
+	    '#value' => t('Calculate'),	   
+  	);
+  	$form['filter'] = array(
+	    '#type' => 'submit',
+	    '#value' => t('Filter'),	  
+  	);
+
+  	$form['space'] = array(
+		'#type' => 'markup',
+		'#markup' => '<div></br></br></div>',
+		);
+
+  	$domain = isset($_GET['domain']) ? check_plain($_GET['domain']) : '';
+	$data_for = isset($_GET['data_for']) ? check_plain($_GET['data_for']) : '';
+	$stat = isset($_GET['stat']) ? check_plain($_GET['stat']) : '';
+	$op= isset($_GET['op']) ? check_plain($_GET['op']) : '';
+
+	//Query to show data on page load
+	$optio = db_select('state_city_data', 'n')->extend('PagerDefault');;
+    $optio->fields('n', array('id', 'domain_id','state_field_name', 'state', 'calculate_val'));
+    if (($op == 'Filter') && $data_for){
+	    $optio->condition('n.domain_id', $domain,'=');
+	    $optio->condition('n.state_field_name',$data_for,'=');
+		}
+	if (($op == 'Filter') && $stat){
+	    	$optio->condition('n.state', $stat,'=');
+		}
+	$optio->limit(20);
+    $optio->orderBy('n.state', 'ASC');
+    $optio->orderBy('n.id', 'DESC');
+    $a = $optio->execute()->fetchAll();
+
+  	$header[] = array("data" => "Serial No.");
+  	$header[] = array("data" => "Doamin Name");
+    $header[] = array("data" => "Data For");
+    $header[] = array("data" => "State Name");
+    $header[] = array("data" => "Count");
+    $header[] = array("data" => "Update");
+
+  	$count ='';
+
+    foreach($a as $key => $item){
+		$opt['domain_name'] = $ops[$item->{domain_id}] ;
+		$opt['domain_id'] = $item->domain_id;
+	    $opt['state_field_name'] = $item->state_field_name ;
+	    $opt['state'] = $item->state ;
+	    $opt['calculate_val'] = $item->calculate_val ;
+	    $opt['id'] = $item->id ;
+	    $count++;
+	    $update =  l(t('Update'), '/site-owner/state/nojs/update/'.$opt['domain_id'].'/'.$opt['state_field_name'].'/'.$opt['state'].'/'.$opt['calculate_val'].'/'.$opt['id'], array('attributes' => array('class' => 'ctools-use-modal')));
+	    $delete = l(t('Delete'), '/site-owner/state/delete/'.$opt['domain_id'].'/'.$opt['state_field_name'].'/'.$opt['state'].'/'.$opt['calculate_val'], array('attributes' => array('onclick' => 'return confirm("Are you sure you want to delete?")'))) ;
+	    
+    $rows[] = array(
+        'data' => array(
+          '<div class="" title="">' .  $count .
+          '<span class=""></span></div>',
+          '<div class="" title="">' .  $opt['domain_name'] .
+          '<span class=""></span></div>',
+          '<div class="m-college" title="">' . $opt['state_field_name'].  
+          '<span class=""></span></div>',
+          '<div class="m-course" title="">' .  $opt['state'] .  
+          '<span class=""></span></div>',
+          '<div class="m-course" title="">' . $opt['calculate_val'] .  
+          '<span class=""></span></div>',
+          '<div class="m-course" title=""><p>'.$update.' | '.$delete. '</p>  
+     	   <span class=""></span></div>',          
+        )
+      );
+	}
+    // Table creation.
+  $form['table']['table'] = array(
+    '#theme' => 'table',
+    '#header' => $header,
+    '#rows' => $rows,
+    '#empty' => t('Table has no row!')
+  );
+  $form['table']['pager'] = array('#markup' => theme('pager'));
+
+  return $form;
+}
+
+function custom_statedata_data_submit($form, &$form_state){
+	$ops = $form_state['input']['op'];
+	$domain = $form_state['values']['domain_ids'];
+	$data_for = $form_state['values']['for'];
+	$stat = $form_state['values']['states'];
+
+	if($ops == 'Filter') {
+		 drupal_goto('site-owner/state', array('query' => array('op'=>$ops,'domain'=> $domain,'data_for'=> $data_for, 'stat' => $stat)));
+	}
+	else{
+		$insert = custom_statedata_data_insert($domain, $data_for, $stat);
+	}
+	drupal_goto('site-owner/state', array('query' => array('op'=>$ops,'domain'=> $domain,'data_for'=> $data_for, 'stat' => $stat)));
+}
+
+function custom_statedata_data_insert($domain, $data_for, $stat){
+
+	switch ($data_for) {
+			case 'Participating Colleges':
+				$query = careers_db_select('current_college_custom_loc','loc');
+				$query->fields('loc', array('state'));
+				$query->innerJoin('domain_access', 'did', 'loc.nid = did.nid');
+				if(isset($stat) && $stat){
+					$query->condition('loc.state', $stat, '=');
+				}
+				else{
+					$query->innerJoin('location_tids_mapping', 'st', 'loc.state = st.google_name');
+					$query->range(0,18976543424354);
+					$query->orderBy('st.google_name');
+					$query->groupBy('st.google_name');
+				}	
+				$query->condition('did.gid', $domain, '=');
+				$query->addExpression('count(loc.nid)','calculate_val');
+				$q = $query->execute()->fetchAll();
+				break;
+			case 'Faculty Count':
+
+				$query = careers_db_select('current_college_custom_loc','loc');
+				$query->fields('loc', array('state'));
+				$query->innerJoin('domain_access', 'did', 'loc.nid = did.nid');
+				$query->innerJoin('field_data_field_total_faculty_in_college', 'f', 'loc.nid = f.entity_id');
+				if(isset($stat) && $stat){
+					$query->condition('loc.state', $stat, '=');
+				}
+				else{
+					$query->innerJoin('location_tids_mapping', 'st', 'loc.state = st.google_name');
+					$query->range(0,18976543424354);
+					$query->orderBy('st.google_name');
+					$query->groupBy('st.google_name');
+				}	
+				$query->condition('did.gid', $domain, '=');
+				$query->addExpression('SUM(f.field_total_faculty_in_college_value)','calculate_val');
+				$q = $query->execute()->fetchAll();
+				break;
+			case 'Course Count':
+				$query = careers_db_select('current_college_custom_loc','loc');
+				$query->fields('loc', array('state'));
+				$query->innerJoin('domain_access', 'did', 'loc.nid = did.nid');
+				$query->innerJoin('college_courses_data_table', 'c', 'loc.nid = c.college_nid');
+				if(isset($stat) && $stat){
+					$query->condition('loc.state', $stat, '=');
+				}
+				else{
+					$query->innerJoin('location_tids_mapping', 'st', 'loc.state = st.google_name');
+					$query->range(0,18976543424354);
+					$query->orderBy('st.google_name');
+					$query->groupBy('st.google_name');
+				}	
+				$query->condition('did.gid', $domain, '=');
+				$query->addExpression('count(c.degree_name)','calculate_val');
+				$q = $query->execute()->fetchAll();
+				break;
+			case 'Exam Accepted':
+				$query = careers_db_select('current_college_custom_loc','loc');
+				$query->fields('loc', array('state'));
+				$query->innerJoin('domain_access', 'did', 'loc.nid = did.nid');
+				$query->innerJoin('college_exam', 'e', 'loc.nid = e.college_nid');
+				if(isset($stat) && $stat){
+					$query->condition('loc.state', $stat, '=');
+				}
+				else{
+					$query->innerJoin('location_tids_mapping', 'st', 'loc.state = st.google_name');
+					$query->range(0,18976543424354);
+					$query->orderBy('st.google_name');
+					$query->groupBy('st.google_name');
+				}	
+				$query->condition('did.gid', $domain, '=');
+				$query->addExpression('count(distinct e.exam_nid)','calculate_val');
+				$q = $query->execute()->fetchAll();
+				break;
+			case 'College Intake':
+				$query = careers_db_select('current_college_custom_loc','loc');
+				$query->fields('loc', array('state'));
+				$query->innerJoin('domain_access', 'did', 'loc.nid = did.nid');
+				$query->innerJoin('college_courses_data_table', 'ci', 'loc.nid = ci.college_nid');
+				if(isset($stat) && $stat){
+					$query->condition('loc.state', $stat, '=');
+				}
+				else{
+					$query->innerJoin('location_tids_mapping', 'st', 'loc.state = st.google_name');
+					$query->range(0,18976543424354);
+					$query->orderBy('st.google_name');
+					$query->groupBy('st.google_name');
+				}	
+				$query->condition('did.gid', $domain, '=');
+				$query->addExpression('SUM(ci.approved_intake)','calculate_val');
+				$q = $query->execute()->fetchAll();
+				break;
+		}
+	$statee = '';
+	$calculate = '';
+	
+	if(isset($stat) && $stat){
+		$and = db_and()->condition('domain_id',$domain, '=')->condition('state_field_name',$data_for, '=')->condition('state',$stat, '=');
+	}
+	else{$and = db_and()->condition('domain_id',$domain, '=')->condition('state_field_name',$data_for, '=');}
+
+	db_delete('state_city_data')->condition($and)->execute(); 
+	
+	$count='';
+	foreach ($q as $record => $value) {
+	    $statee = $value->state;
+	    $calculate = $value->calculate_val;
+	     $count++;
+	    $records_array = array(
+	    	'domain_id' => $domain,
+	    	'state_field_name' => $data_for,
+	    	'state' => $statee,
+	    	'calculate_val' => $calculate
+	   
+	    );
+	   
+	    $results = db_insert('state_city_data')->fields($records_array)->execute();}
+	    drupal_set_message( $count. " Rows updated");
+}

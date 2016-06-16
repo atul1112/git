@@ -1,0 +1,4 @@
+name = Custom Form
+description = Form to manupulate data
+core = 7.x
+package = Z Module
